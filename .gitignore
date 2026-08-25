@@ -1,0 +1,13 @@
+# Secrets and local runtime configuration
+.env
+.env.*
+!.env.example
+
+# Dependencies and generated artifacts
+node_modules/
+dist/
+coverage/
+
+# OS/editor files
+.DS_Store
+.vscode/
