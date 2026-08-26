@@ -12,6 +12,7 @@ function Login() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+
     setError("");
     setLoading(true);
 
@@ -22,7 +23,10 @@ function Login() {
       });
 
       localStorage.setItem("token", response.data.token);
-      localStorage.setItem("user", JSON.stringify(response.data.user));
+      localStorage.setItem(
+        "user",
+        JSON.stringify(response.data.user)
+      );
 
       navigate("/dashboard");
     } catch (requestError) {
@@ -39,7 +43,9 @@ function Login() {
     <main className="login-page">
       <section className="login-card">
         <p className="app-name">VisitorPass</p>
+
         <h1>Welcome back</h1>
+
         <p className="login-subtitle">
           Sign in to manage visitor requests.
         </p>
@@ -48,6 +54,7 @@ function Login() {
 
         <form onSubmit={handleSubmit}>
           <label htmlFor="email">Email address</label>
+
           <input
             id="email"
             type="email"
@@ -58,6 +65,7 @@ function Login() {
           />
 
           <label htmlFor="password">Password</label>
+
           <input
             id="password"
             type="password"
@@ -72,14 +80,15 @@ function Login() {
           </button>
         </form>
 
-        {(import.meta.env.DEV || import.meta.env.VITE_ALLOW_PUBLIC_REGISTRATION === "true") && (
-          <p className="mt-6 text-center text-sm text-gray-600">
-            Don't have an account?{" "}
-            <Link to="/register" className="font-semibold text-[#154d48] hover:underline">
-              Sign up
-            </Link>
-          </p>
-        )}
+        <p className="mt-6 text-center text-sm text-gray-600">
+          Don't have an account?{" "}
+          <Link
+            to="/register"
+            className="font-semibold text-[#154d48] hover:underline"
+          >
+            Sign up
+          </Link>
+        </p>
       </section>
     </main>
   );
