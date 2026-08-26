@@ -15,13 +15,26 @@ const bootstrapAdmin = require("./seedAdmin");
 
 const app = express();
 
-// Keep CORS explicit in production. Set CORS_ORIGINS to a comma-separated
-// list of deployed frontend URLs; local Vite URLs remain available in dev.
+/* =========================================================
+   PORT
+========================================================= */
+
+const PORT = process.env.PORT || 5001;
+
+/* =========================================================
+   CORS
+========================================================= */
+
 const configuredOrigins = (process.env.CORS_ORIGINS || "")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
-const developmentOrigins = ["http://localhost:5173", "http://127.0.0.1:5173"];
+
+const developmentOrigins = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+];
+
 const allowedOrigins =
   configuredOrigins.length > 0
     ? configuredOrigins
@@ -32,38 +45,72 @@ const allowedOrigins =
 app.use(
   cors({
     origin(origin, callback) {
-      // Requests without an Origin header include server-to-server clients.
-      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+      // Allow requests without Origin headers
+      // such as server-to-server requests.
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      console.warn("Blocked CORS origin:", origin);
+
       return callback(new Error("Origin is not allowed by CORS"));
     },
+
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
+/* =========================================================
+   BODY PARSER
+========================================================= */
+
 app.use(express.json({ limit: "1mb" }));
 
-// Keep every JSON API response predictable without changing the individual
-// route handlers. File downloads use res.send(), so their binary bodies are
-// intentionally not affected.
+/* =========================================================
+   STANDARD JSON RESPONSE FORMAT
+========================================================= */
+
 app.use((req, res, next) => {
   const sendJson = res.json.bind(res);
 
   res.json = (body) => {
-    // A handler may already use the shared response helpers.
-    if (body && typeof body === "object" && typeof body.success === "boolean") {
+    // If the route already uses the standard response format,
+    // don't modify it.
+    if (
+      body &&
+      typeof body === "object" &&
+      typeof body.success === "boolean"
+    ) {
       return sendJson(body);
     }
 
     const isError = res.statusCode >= 400;
-    const message = body?.message || (isError ? "Request failed" : "Success");
+
+    const message =
+      body?.message || (isError ? "Request failed" : "Success");
+
     const error = body?.error || null;
+
     let data = body;
 
-    // Do not duplicate display-only fields inside data. This keeps objects
-    // such as { message, visit } available as data.visit to API clients.
-    if (body && !Array.isArray(body) && typeof body === "object") {
-      const { message: _message, error: _error, ...rest } = body;
+    // Remove display-only fields from data.
+    if (
+      body &&
+      !Array.isArray(body) &&
+      typeof body === "object"
+    ) {
+      const {
+        message: _message,
+        error: _error,
+        ...rest
+      } = body;
+
       data = Object.keys(rest).length ? rest : null;
     }
 
@@ -78,71 +125,203 @@ app.use((req, res, next) => {
   next();
 });
 
-// Routes
+/* =========================================================
+   HEALTH CHECK
+========================================================= */
+
+app.get("/", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Visitor Pass Management API is running",
+    database:
+      mongoose.connection.readyState === 1
+        ? "connected"
+        : "connecting",
+  });
+});
+
+/* =========================================================
+   API ROUTES
+========================================================= */
+
 app.use("/api/auth", authRoutes);
+
 app.use("/api/employees", employeeRoutes);
+
 app.use("/api/users", userRoutes);
+
 app.use("/api/visits", visitRoutes);
+
 app.use("/api/reports", reportRoutes);
+
 app.use("/api/activities", activityRoutes);
 
-// Development-only bootstrap endpoint. It never resets an existing account.
-app.post("/api/admin/seed", protect, allowRoles("admin"), async (req, res) => {
-  try {
-    if (process.env.NODE_ENV === "production" || process.env.ALLOW_ADMIN_SEED !== "true") {
-      return res.status(403).json({ message: "Admin seeding is disabled" });
-    }
-    const result = await bootstrapAdmin();
-    res.json({ message: result.created ? "Admin user created successfully" : "No admin user was created", result });
-  } catch (err) {
-    res.status(500).json({ message: "Could not seed admin user", error: err.message });
-  }
-});
+/* =========================================================
+   DEVELOPMENT ADMIN SEED
+========================================================= */
 
-// Health Check Endpoint
-app.get("/", (req, res) => {
-  res.json({
-    message: "Visitor Pass Management API is running",
+app.post(
+  "/api/admin/seed",
+  protect,
+  allowRoles("admin"),
+  async (req, res) => {
+    try {
+      if (
+        process.env.NODE_ENV === "production" ||
+        process.env.ALLOW_ADMIN_SEED !== "true"
+      ) {
+        return res.status(403).json({
+          message: "Admin seeding is disabled",
+        });
+      }
+
+      const result = await bootstrapAdmin();
+
+      return res.json({
+        message: result.created
+          ? "Admin user created successfully"
+          : "No admin user was created",
+        result,
+      });
+    } catch (err) {
+      console.error("Admin seed error:", err);
+
+      return res.status(500).json({
+        message: "Could not seed admin user",
+        error: err.message,
+      });
+    }
+  }
+);
+
+/* =========================================================
+   404 HANDLER
+========================================================= */
+
+app.use((req, res) => {
+  res.status(404).json({
+    message: `Cannot ${req.method} ${req.originalUrl}`,
   });
 });
 
-// Fallback 404 Route Handler
-app.use((req, res) => {
-  res.status(404).json({ message: `Cannot ${req.method} ${req.originalUrl}` });
-});
+/* =========================================================
+   ERROR HANDLER
+========================================================= */
 
-// Last-resort handler for errors thrown by middleware or route handlers.
-// The response envelope middleware above guarantees its shape is consistent.
 app.use((error, req, res, next) => {
   console.error("Unhandled API error:", error);
-  if (res.headersSent) return next(error);
-  const isCorsError = error.message === "Origin is not allowed by CORS";
-  res.status(isCorsError ? 403 : 500).json({
-    message: isCorsError ? error.message : "An unexpected server error occurred",
-    // Do not disclose internals to API consumers in production.
-    error: process.env.NODE_ENV === "production" ? null : error.message,
+
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  const isCorsError =
+    error.message === "Origin is not allowed by CORS";
+
+  return res.status(isCorsError ? 403 : 500).json({
+    message: isCorsError
+      ? error.message
+      : "An unexpected server error occurred",
+
+    error:
+      process.env.NODE_ENV === "production"
+        ? null
+        : error.message,
   });
 });
 
-const PORT = process.env.PORT || 5001;
+/* =========================================================
+   START SERVER FIRST
+========================================================= */
 
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(async () => {
+const server = app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server is running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
+});
+
+/* =========================================================
+   CONNECT TO MONGODB
+========================================================= */
+
+async function connectDatabase() {
+  try {
+    if (!process.env.MONGO_URI) {
+      throw new Error("MONGO_URI is not defined");
+    }
+
+    await mongoose.connect(process.env.MONGO_URI);
+
     console.log("MongoDB connected successfully");
 
+    // Bootstrap admin after database connection.
     if (typeof bootstrapAdmin === "function") {
       try {
         await bootstrapAdmin();
+        console.log("Admin bootstrap completed");
       } catch (err) {
-        console.error("Admin bootstrap error:", err.message);
+        console.error(
+          "Admin bootstrap error:",
+          err.message
+        );
       }
     }
+  } catch (error) {
+    console.error(
+      "MongoDB connection error:",
+      error.message
+    );
 
-    app.listen(PORT, () => {
-      console.log(`Server is running on http://localhost:${PORT}`);
-    });
-  })
-  .catch((error) => {
-    console.error("MongoDB connection error:", error.message);
+    // Don't immediately terminate the server.
+    // Render can still see the health endpoint and
+    // mongoose can be retried.
+  }
+}
+
+connectDatabase();
+
+/* =========================================================
+   MONGOOSE CONNECTION EVENTS
+========================================================= */
+
+mongoose.connection.on("connected", () => {
+  console.log("MongoDB connection established");
+});
+
+mongoose.connection.on("error", (error) => {
+  console.error(
+    "MongoDB connection error:",
+    error.message
+  );
+});
+
+mongoose.connection.on("disconnected", () => {
+  console.warn("MongoDB disconnected");
+});
+
+/* =========================================================
+   GRACEFUL SHUTDOWN
+========================================================= */
+
+process.on("SIGTERM", async () => {
+  console.log("SIGTERM received. Shutting down...");
+
+  server.close(async () => {
+    await mongoose.connection.close();
+
+    console.log("Server shut down successfully");
+
+    process.exit(0);
   });
+});
+
+process.on("SIGINT", async () => {
+  console.log("SIGINT received. Shutting down...");
+
+  server.close(async () => {
+    await mongoose.connection.close();
+
+    console.log("Server shut down successfully");
+
+    process.exit(0);
+  });
+});
