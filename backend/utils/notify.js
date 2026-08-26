@@ -1,4 +1,5 @@
 const nodemailer = require("nodemailer");
+const axios = require("axios");
 
 let transporter = null;
 const emailConfigured = Boolean(
@@ -20,23 +21,16 @@ if (emailConfigured) {
   });
 }
 
-const smsConfigured = Boolean(
-  process.env.TWILIO_ACCOUNT_SID &&
-  process.env.TWILIO_AUTH_TOKEN &&
-  process.env.TWILIO_FROM_NUMBER
-);
+// ---- SMS (Fast2SMS) ----
+// Replaces the earlier Twilio integration. Fast2SMS's "Quick SMS" (route=q)
+// route works for Indian numbers without requiring DLT template registration,
+// which is what we want for this application's transactional notifications.
+const smsConfigured = Boolean(process.env.FAST2SMS_API_KEY);
 
-let twilioClient = null;
-if (smsConfigured) {
-  try {
-    const twilio = require("twilio");
-    twilioClient = twilio(
-      process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_AUTH_TOKEN
-    );
-  } catch (err) {
-    console.warn("Twilio package not installed. Run: npm install twilio");
-  }
+if (!smsConfigured) {
+  console.warn(
+    "FAST2SMS_API_KEY not set. SMS notifications will be skipped until configured."
+  );
 }
 
 async function sendEmail({ to, subject, html, text }) {
@@ -59,28 +53,49 @@ async function sendEmail({ to, subject, html, text }) {
   }
 }
 
+// Fast2SMS's Quick SMS route expects a plain 10-digit Indian mobile number
+// (no +91, no spaces, no dashes). This function normalizes whatever the
+// visitor typed in the registration form (e.g. "+91 90801 57679",
+// "9080157679", "091-9080157679") down to the 10 digits Fast2SMS needs.
+function normalizeToTenDigits(rawNumber) {
+  const digitsOnly = String(rawNumber || "").replace(/\D/g, "");
+  // Strip a leading country code (91) if present, keeping the last 10 digits.
+  return digitsOnly.length > 10 ? digitsOnly.slice(-10) : digitsOnly;
+}
+
 async function sendSMS({ to, body }) {
   if (!to) return;
-  if (!smsConfigured || !twilioClient) {
-    console.log(`[notify:sms skipped - not configured] to=${to} body="${body}"`);
+
+  const numbers = normalizeToTenDigits(to);
+
+  if (numbers.length !== 10) {
+    console.warn(`[notify:sms skipped - invalid number] to=${to}`);
     return;
   }
 
-  // Normalize dynamic phone number (prepends +91 for 10-digit Indian numbers)
-  let formattedNumber = String(to).trim();
-  if (/^\d{10}$/.test(formattedNumber)) {
-    formattedNumber = `+91${formattedNumber}`;
+  if (!smsConfigured) {
+    console.log(`[notify:sms skipped - not configured] to=${numbers} body="${body}"`);
+    return;
   }
 
   try {
-    await twilioClient.messages.create({
-      from: process.env.TWILIO_FROM_NUMBER,
-      to: formattedNumber,
-      body,
+    const response = await axios.get("https://www.fast2sms.com/dev/bulkV2", {
+      params: {
+        authorization: process.env.FAST2SMS_API_KEY,
+        route: "q",
+        message: body,
+        numbers,
+      },
+      headers: { "cache-control": "no-cache" },
     });
-    console.log(`[notify:sms] Message sent dynamically to ${formattedNumber}`);
+
+    if (response.data && response.data.return === true) {
+      console.log(`[notify:sms] Dispatched successfully to ${numbers}`);
+    } else {
+      console.error(`[notify:sms] Fast2SMS responded with an error:`, response.data);
+    }
   } catch (err) {
-    console.error("SMS send failed:", err.message);
+    console.error("SMS send failed:", err.response?.data || err.message);
   }
 }
 
@@ -272,6 +287,24 @@ async function notifyVisitCreated(visit, employeeUser) {
   }
 }
 
+// NEW: Sends a confirmation SMS to the VISITOR's own phone number
+// (the one they/the receptionist typed into the Register Visitor form),
+// immediately after their request is submitted.
+async function notifyVisitorRegistered(visit) {
+  try {
+    if (!visit?.phone) return;
+
+    await sendSMS({
+      to: visit.phone,
+      body: `Hi ${visit.visitorName || "Visitor"}, your visit request for ${formatDate(
+        visit.visitDate
+      )} has been received and is awaiting host approval. - Visitor Pass Management`,
+    });
+  } catch (err) {
+    console.error("notifyVisitorRegistered error:", err.message);
+  }
+}
+
 async function notifyVisitDecision(visit, decision) {
   try {
     const subject =
@@ -332,6 +365,7 @@ const notify = {
   sendEmail,
   sendSMS,
   notifyVisitCreated,
+  notifyVisitorRegistered,
   notifyVisitDecision,
   notifyCheckIn,
   notifyCheckOut,
@@ -344,6 +378,7 @@ module.exports.default = notify;
 module.exports.sendEmail = sendEmail;
 module.exports.sendSMS = sendSMS;
 module.exports.notifyVisitCreated = notifyVisitCreated;
+module.exports.notifyVisitorRegistered = notifyVisitorRegistered;
 module.exports.notifyVisitDecision = notifyVisitDecision;
 module.exports.notifyCheckIn = notifyCheckIn;
 module.exports.notifyCheckOut = notifyCheckOut;

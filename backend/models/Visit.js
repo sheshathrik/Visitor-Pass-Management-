@@ -91,13 +91,19 @@ const visitSchema = new mongoose.Schema(
 );
 
 // Indexes for the query patterns actually used across visitRoutes.js /
-// reportRoutes.js: duplicate/active checks by phone+date, employee-scoped
-// pending lookups, status filters, and date-sorted history/report views.
-visitSchema.index({ phone: 1, visitDate: 1 });
-visitSchema.index({ employee: 1, status: 1 });
-visitSchema.index({ employee: 1, status: 1, visitDate: -1 });
-visitSchema.index({ status: 1 });
-visitSchema.index({ visitDate: -1 });
-visitSchema.index({ status: 1, visitDate: -1, createdAt: -1 });
+// reportRoutes.js.
+//
+// { employee: 1, status: 1 } and { status: 1 } were intentionally removed
+// below: both are strict prefixes of the compound indexes that already
+// exist ({ employee: 1, status: 1, visitDate: -1 } and
+// { status: 1, visitDate: -1, createdAt: -1 } respectively). MongoDB can
+// serve any query matched by a prefix using the longer compound index, so
+// keeping the shorter duplicate only adds write overhead and storage with
+// no query-planner benefit.
+visitSchema.index({ phone: 1, visitDate: 1 });      // duplicate-visit-on-same-date check
+visitSchema.index({ phone: 1, status: 1 });          // NEW: active-visit check (POST / handler) - was previously unindexed
+visitSchema.index({ employee: 1, status: 1, visitDate: -1 }); // pending-per-employee count, GET /pending list
+visitSchema.index({ visitDate: -1 });                 // date-range/report queries with no status filter
+visitSchema.index({ status: 1, visitDate: -1, createdAt: -1 }); // history list, active-only filter, sorted views
 
 module.exports = mongoose.model("Visit", visitSchema);

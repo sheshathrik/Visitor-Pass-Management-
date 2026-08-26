@@ -5,11 +5,12 @@ const User = require("../models/User");
 const ActivityLog = require("../models/ActivityLog");
 const { protect, allowRoles } = require("../middleware/authMiddleware");
 
-const { 
+const {
   notifyVisitCreated,
-  notifyVisitDecision, 
-  notifyCheckIn, 
-  notifyCheckOut 
+  notifyVisitorRegistered,
+  notifyVisitDecision,
+  notifyCheckIn,
+  notifyCheckOut,
 } = require('../utils/notify');
 
 const router = express.Router();
@@ -218,6 +219,14 @@ router.post("/", protect, allowRoles("receptionist"), async (req, res) => {
     User.findOne({ employee: employeeToVisit._id })
       .then((employeeUser) => notifyVisitCreated(visit, employeeUser))
       .catch((err) => console.error("notifyVisitCreated failed:", err.message));
+
+    // Send an SMS confirmation to the VISITOR'S OWN number (the one just
+    // entered in the Register Visitor form), confirming their request was
+    // received. This is independent of the host-employee email above and
+    // does not block the response if it fails.
+    notifyVisitorRegistered(visit).catch((err) =>
+      console.error("notifyVisitorRegistered failed:", err.message)
+    );
 
     res.status(201).json({
       message: "Visitor request created successfully and is awaiting approval",
