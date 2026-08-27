@@ -1,6 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+
 const User = require("../models/User");
 const Employee = require("../models/Employee");
 const { protect } = require("../middleware/authMiddleware");
@@ -8,74 +9,116 @@ const { passwordError } = require("../utils/password");
 
 const router = express.Router();
 
-// ==========================================
-// REGISTER ROUTE
-// ==========================================
+/* =========================================================
+   REGISTER ROUTE
+========================================================= */
+
 router.post("/register", async (req, res) => {
   try {
-    // Accounts with access to an organisation's visitor records should be
-    // provisioned by an administrator. Public registration is opt-in for
-    // development/demo deployments only.
-    if (process.env.NODE_ENV === "production" && process.env.ALLOW_PUBLIC_REGISTRATION !== "true") {
+    // Public registration is disabled in production unless
+    // explicitly enabled through the environment variable.
+    if (
+      process.env.NODE_ENV === "production" &&
+      process.env.ALLOW_PUBLIC_REGISTRATION !== "true"
+    ) {
       return res.status(403).json({
-        message: "Public registration is disabled. Ask an administrator to create your account.",
+        message:
+          "Public registration is disabled. Ask an administrator to create your account.",
       });
     }
 
-    const { name, email, password, role = "employee" } = req.body;
-    // Self-registration is deliberately limited to operational roles. An
-    // administrator can only be created through the protected user API.
-    if (!['employee', 'receptionist'].includes(role)) {
+    const {
+      name,
+      email,
+      password,
+      role = "employee",
+    } = req.body;
+
+    // Only employee and receptionist roles can self-register.
+    if (!["employee", "receptionist"].includes(role)) {
       return res.status(400).json({
-        message: "Signup role must be employee or receptionist",
+        message:
+          "Signup role must be employee or receptionist",
       });
     }
 
+    // Required fields validation
     if (!name || !email || !password) {
       return res.status(400).json({
-        message: "Name, email, and password are required.",
+        message:
+          "Name, email, and password are required.",
       });
     }
 
-    if (typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      return res.status(400).json({ message: "Provide a valid email address" });
+    // Email validation
+    if (
+      typeof email !== "string" ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+        email.trim()
+      )
+    ) {
+      return res.status(400).json({
+        message: "Provide a valid email address",
+      });
     }
+
+    // Password validation
     const invalidPassword = passwordError(password);
-    if (invalidPassword) return res.status(400).json({ message: invalidPassword });
 
-    const normalizedEmail = email.toLowerCase().trim();
+    if (invalidPassword) {
+      return res.status(400).json({
+        message: invalidPassword,
+      });
+    }
 
-    // 1. Check if user already exists
-    const existingUser = await User.findOne({ email: normalizedEmail });
+    const normalizedEmail = email
+      .toLowerCase()
+      .trim();
+
+    // Check whether the user already exists
+    const existingUser = await User.findOne({
+      email: normalizedEmail,
+    });
+
     if (existingUser) {
       return res.status(400).json({
-        message: "An account with this email address already exists.",
+        message:
+          "An account with this email address already exists.",
       });
     }
 
-    // 2. Hash password
+    // Hash password
     const salt = await bcrypt.genSalt(12);
-    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const hashedPassword = await bcrypt.hash(
+      password,
+      salt
+    );
 
     let employeeId = null;
 
-    // 3. Handle Employee Linking/Creation safely
+    // Create or link employee record
     if (role === "employee") {
-      let existingEmp = await Employee.findOne({ email: normalizedEmail });
-
-      if (existingEmp) {
-        employeeId = existingEmp._id;
-      } else {
-        const newEmployee = await Employee.create({
-          name,
+      const existingEmployee =
+        await Employee.findOne({
           email: normalizedEmail,
-          department: "General",
         });
+
+      if (existingEmployee) {
+        employeeId = existingEmployee._id;
+      } else {
+        const newEmployee =
+          await Employee.create({
+            name,
+            email: normalizedEmail,
+            department: "General",
+          });
+
         employeeId = newEmployee._id;
       }
     }
 
-    // 4. Create User
+    // Create user
     const user = await User.create({
       name,
       email: normalizedEmail,
@@ -84,7 +127,8 @@ router.post("/register", async (req, res) => {
       employee: employeeId,
     });
 
-    res.status(201).json({
+    return res.status(201).json({
+      success: true,
       message: "Registration successful",
       user: {
         id: user._id,
@@ -95,62 +139,162 @@ router.post("/register", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Registration error:", error);
-    res.status(error.code === 11000 ? 409 : 400).json({
-      message: error.code === 11000 ? "An account with this email address already exists." : error.message || "Registration failed. Please try again.",
-    });
+    console.error(
+      "Registration error:",
+      error.message
+    );
+
+    return res
+      .status(error.code === 11000 ? 409 : 400)
+      .json({
+        success: false,
+        message:
+          error.code === 11000
+            ? "An account with this email address already exists."
+            : error.message ||
+              "Registration failed. Please try again.",
+      });
   }
 });
 
-// ==========================================
-// LOGIN ROUTE
-// ==========================================
+/* =========================================================
+   LOGIN ROUTE
+========================================================= */
+
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // Debug: never log the password
+    console.log(
+      "Login attempt:",
+      email
+    );
+
+    // Required fields validation
     if (!email || !password) {
+      console.log(
+        "Login failed: Email or password missing"
+      );
+
       return res.status(400).json({
-        message: "Email and password are required",
+        success: false,
+        message:
+          "Email and password are required",
       });
     }
 
-    if (typeof email !== "string" || typeof password !== "string") {
-      return res.status(400).json({ message: "Email and password must be text values" });
+    // Type validation
+    if (
+      typeof email !== "string" ||
+      typeof password !== "string"
+    ) {
+      console.log(
+        "Login failed: Invalid data types"
+      );
+
+      return res.status(400).json({
+        success: false,
+        message:
+          "Email and password must be text values",
+      });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    // Normalize email
+    const normalizedEmail = email
+      .toLowerCase()
+      .trim();
+
+    // Find user
+    const user = await User.findOne({
+      email: normalizedEmail,
+    });
+
+    console.log(
+      "User found:",
+      !!user
+    );
 
     if (!user) {
+      console.log(
+        "Login failed: User does not exist"
+      );
+
       return res.status(401).json({
-        message: "Invalid email or password",
+        success: false,
+        message:
+          "Invalid email or password",
       });
     }
 
+    // Check whether the account is active
     if (!user.isActive) {
+      console.log(
+        "Login failed: Account is inactive"
+      );
+
       return res.status(403).json({
-        message: "This user account is inactive",
+        success: false,
+        message:
+          "This user account is inactive",
       });
     }
 
-    const isPasswordCorrect = await bcrypt.compare(password, user.password);
+    // Compare password
+    const isPasswordCorrect =
+      await bcrypt.compare(
+        password,
+        user.password
+      );
+
+    console.log(
+      "Password correct:",
+      isPasswordCorrect
+    );
 
     if (!isPasswordCorrect) {
+      console.log(
+        "Login failed: Incorrect password"
+      );
+
       return res.status(401).json({
-        message: "Invalid email or password",
+        success: false,
+        message:
+          "Invalid email or password",
       });
     }
 
+    // Check JWT secret
+    if (!process.env.JWT_SECRET) {
+      console.error(
+        "Login failed: JWT_SECRET is not defined"
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Server authentication configuration error",
+      });
+    }
+
+    // Generate JWT token
     const token = jwt.sign(
       {
         userId: user._id,
         role: user.role,
       },
       process.env.JWT_SECRET,
-      { expiresIn: "1d" }
+      {
+        expiresIn: "1d",
+      }
     );
 
-    res.json({
+    console.log(
+      `Login successful: ${user.email} (${user.role})`
+    );
+
+    return res.status(200).json({
+      success: true,
       message: "Login successful",
       token,
       user: {
@@ -162,20 +306,31 @@ router.post("/login", async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({
+    console.error(
+      "Login error:",
+      error.message
+    );
+
+    return res.status(500).json({
+      success: false,
       message: "Login failed",
-      error: error.message,
     });
   }
 });
 
-// ==========================================
-// ME ROUTE
-// ==========================================
-router.get("/me", protect, (req, res) => {
-  res.json({
-    user: req.user,
-  });
-});
+/* =========================================================
+   CURRENT USER ROUTE
+========================================================= */
+
+router.get(
+  "/me",
+  protect,
+  (req, res) => {
+    return res.status(200).json({
+      success: true,
+      user: req.user,
+    });
+  }
+);
 
 module.exports = router;
