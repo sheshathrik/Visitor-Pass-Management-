@@ -253,6 +253,7 @@ router.get("/pending", protect, allowRoles("employee"), async (req, res) => {
       employee: req.user.employee,
       status: "pending",
     })
+      .lean()
       .populate("employee", "name department designation")
       .populate("createdBy", "name email")
       .sort({ visitDate: 1, expectedArrivalTime: 1 });

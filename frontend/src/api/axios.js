@@ -1,7 +1,4 @@
-import axios from 'axios';
+// Re-export the configured api instance with auth interceptors
+import api from '../services/api';
 
-const API = axios.create({
-  baseURL: 'https://visitor-pass-management-1-aa5j.onrender.com/api',
-});
-
-export default API;
+export default api;
