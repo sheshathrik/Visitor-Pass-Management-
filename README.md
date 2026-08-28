@@ -6,7 +6,7 @@ A secure, enterprise-grade Visitor Pass Management System built using **MongoDB,
 
 ## 🌐 Live Application & Repositories
 
-- **Live Frontend (Vercel):** [https://visitor-pass-management-mu.vercel.app](https://visitor-pass-management-mu.vercel.app)
+- **Live Frontend (Vercel):** [https://visitor-pass-management-ten.vercel.app](https://visitor-pass-management-ten.vercel.app)
 - **Live Backend API (Render):** [https://visitor-pass-management-h7x6.onrender.com](https://visitor-pass-management-h7x6.onrender.com)
 - **GitHub Repository:** [https://github.com/sheshathrik/Visitor-Pass-Management-](https://github.com/sheshathrik/Visitor-Pass-Management-)
 
