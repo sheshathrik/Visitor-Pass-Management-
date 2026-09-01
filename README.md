@@ -35,13 +35,14 @@ A secure, enterprise-grade Visitor Pass Management System built using **MongoDB,
 ## 👥 User Roles & Permissions
 
 ```mermaid
-flowchart TD
-    A["Visitor Arrives"] -->|"1. Register Request"| B["Receptionist"]
-    B -->|"2. Email & SMS Alert"| C["Host Employee"]
-    C -->|"3. Approve Request"| D["Receptionist Check-In"]
-    D -->|"4. Issue Visitor Pass"| E["Active Visit On-Premises"]
-    E -->|"5. Visit Concludes"| F["Receptionist Check-Out"]
-    F -->|"6. Audit Log Generated"| G["Admin Dashboard & Reports"]
+graph TD
+    A[1. Visitor Arrives] --> B[2. Receptionist Registers Visit]
+    B --> C[3. Host Employee Receives Email and SMS Alert]
+    C --> D[4. Host Employee Approves Request]
+    D --> E[5. Receptionist Checks In Visitor]
+    E --> F[6. Physical Pass Issued]
+    F --> G[7. Receptionist Checks Out Visitor]
+    G --> H[8. Activity Logged in Admin Dashboard and Reports]
 ```
 
 ### 1. 🛡️ Administrator
