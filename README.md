@@ -34,16 +34,26 @@ A secure, enterprise-grade Visitor Pass Management System built using **MongoDB,
 
 ## 👥 User Roles & Permissions
 
-```mermaid
-graph TD
-    A[1. Visitor Arrives] --> B[2. Receptionist Registers Visit]
-    B --> C[3. Host Employee Receives Email and SMS Alert]
-    C --> D[4. Host Employee Approves Request]
-    D --> E[5. Receptionist Checks In Visitor]
-    E --> F[6. Physical Pass Issued]
-    F --> G[7. Receptionist Checks Out Visitor]
-    G --> H[8. Activity Logged in Admin Dashboard and Reports]
+```text
+┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐
+│ 1. Visitor      │  ───> │ 2. Receptionist │  ───> │ 3. Host         │
+│    Arrives      │       │    Registers    │       │    Employee     │
+└─────────────────┘       └─────────────────┘       └────────┬────────┘
+                                                             │
+┌─────────────────┐       ┌─────────────────┐       ┌────────▼────────┐
+│ 6. Admin Audit  │  <─── │ 5. Receptionist │  <─── │ 4. Receptionist │
+│    & Reports    │       │    Check-Out    │       │    Check-In     │
+└─────────────────┘       └─────────────────┘       └─────────────────┘
 ```
+
+| Step | Stage | Performed By | System Action & Notifications |
+| :---: | :--- | :--- | :--- |
+| **1** | **Registration** | Receptionist | Captures visitor details, ID proof, purpose, scheduled time, and host employee. |
+| **2** | **Notification** | System | Automatically dispatches **Email** & **SMS** alert to the host employee. |
+| **3** | **Approval** | Host Employee | Reviews, approves, or rejects the visitor request via the Employee portal. |
+| **4** | **Check-In** | Receptionist | Verifies photo ID, marks attendance, and issues pass on scheduled visit date. |
+| **5** | **Check-Out** | Receptionist | Records visitor departure timestamp when the visit concludes. |
+| **6** | **Audit Trail** | System / Admin | Logs complete chronological activity history for admin reporting and file exports. |
 
 ### 1. 🛡️ Administrator
 - **Dashboard:** High-level metrics, 7-day visitor traffic bar chart, today's status breakdown pie chart.
