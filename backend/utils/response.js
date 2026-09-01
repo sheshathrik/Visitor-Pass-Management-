@@ -8,4 +8,3 @@ const ok = (res, data, message = "Success", code = 200) =>
     res.status(code).json({ success: false, message, error });
   
   module.exports = { ok, fail };
-  
